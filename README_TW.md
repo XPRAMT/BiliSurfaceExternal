@@ -2,7 +2,7 @@
 
 # Bili Surface Bridge
 
-給官方 Bilibili Android App（`tv.danmaku.bili`）用的 LSPosed 模組。它修正 Bilibili 內建 IJK 播放器在高幀率點播時的微卡頓（在 Nubia NX809J 上已壓到物理下限），讓你選擇一般影片詳情頁播放器的渲染器、在畫面上顯示實際的影音格式，並可自動挑選最佳音軌。不修改官方 APK，全部在執行期 Hook。
+給官方 Bilibili Android App（`tv.danmaku.bili`）用的 LSPosed 模組。它修正 Bilibili 內建 IJK 播放器在高幀率點播時的微卡頓（在 Nubia NX809J 與小米平板 6 Pro 上已壓到物理下限），讓你選擇一般影片詳情頁播放器的渲染器、在畫面上顯示實際的影音格式，並可自動挑選最佳音軌。不修改官方 APK，全部在執行期 Hook。
 
 這份 README 的後半是完整的根因分析與修復指引，也是寫給 Bilibili 播放器工程師（以及協助他們的 AI）看的：每個結論都來自 Bilibili Android 9.13.0 上的執行期實驗與 Perfetto trace，所有修正都可以一對一搬回 IJK 與播放器原始碼。
 
@@ -24,11 +24,35 @@
 
 ## 安裝與驗證
 
+模組 APK 在 [GitHub Releases](https://github.com/XPRAMT/BiliSurfaceExternal/releases)。**只支援 Bilibili 9.13.0**：原生 Hook 綁定這個版本的 IJK 函式庫（會先核對 build-id 與函式入口，不符就不掛鉤），其他版本只有部分 Java 功能可用。
+
+### LSPosed（root）
+
 1. 安裝模組 APK，並在 LSPosed 啟用它。
 2. 作用域只勾選 Bilibili。
 3. 開啟模組，選擇渲染器與要開的開關。
 4. 強制停止後重新開啟 Bilibili，再播放一般影片。
 5. 在 LSPosed log 搜尋 `BiliSurfaceBridge`；成功掛載時會出現選定的影片詳情 renderer，幀同步開啟時 IJK service 會記錄 `native release scheduling active` 與 `video-pictq-size default=min=12`。
+
+### NPatch（免 root）
+
+[NPatch](https://github.com/7723mod/NPatch) 把 Xposed 框架打包進 Bilibili 的 APK。請用**管理器模式**，模組設定才能在模組 App 裡調整（嵌入模式下模組只能用預設值）。以下以 NPatch 1.0.9 實測：
+
+1. 取得 Bilibili **9.13.0** 的 APK。
+2. 在電腦上修補（需要 Java 17 以上）：
+   ```
+   java -jar jar-v1.0.9-833-release.jar bilibili-9.13.0.apk --manager -l 2 -o out
+   ```
+   `-l 2` 是簽名繞過等級，Bilibili 需要它才能正常登入與播放。
+3. 在裝置上安裝 NPatch 管理器（與修補用的版本相同）、本模組 APK，以及 `out/` 裡修補後的 Bilibili。修補版的簽名與官方版不同，必須先解除安裝官方版，登入狀態與離線快取會被清除。
+4. 在 NPatch 管理器的「管理」頁點 Bilibili，勾選 **BiliSurfaceBridge**。
+5. 完整關閉再開啟 Bilibili。在 `adb logcat` 搜尋 `BiliSurfaceBridge`：看到 `module preferences read from provider` 表示設定已讀到，播放時會出現 `native release scheduling active`。
+
+注意事項：
+
+- **小米／HyperOS 平板要關閉 Bilibili 的「平行視窗」**。開啟時 NPatch 會在啟動時出錯，模組不會載入。
+- NPatch 下模組透過模組 App 提供的唯讀 ContentProvider 讀設定；Bilibili 剛啟動的一兩秒讀不到，那段時間使用預設值。大多數設定在下一支影片就會生效。
+- 實測 NPatch 1.0.9 在 Sony G8142（Android 9）上會讓 Bilibili 啟動卡死，與本模組無關（不含模組也一樣）。
 
 模組只會寫入 renderer 類別與非敏感的螢幕資訊到 Xposed log，不讀取帳號資料、Cookie、影片網址或播放授權值。
 
@@ -84,6 +108,24 @@
 其他模式（1x、離線 4K120，以舊指標「間隔超過 1.5 格的次數」計，30 秒）：原樣 Texture 376、原樣直連 Surface 143；Media3 1.8.1 對照 8（60 fps 12）。直連 Surface 修正後曾量到 6（60 fps 2），但未依第 3 節的後續修正重測。
 
 時間戳是否生效看 SurfaceFlinger trace：`latchBuffer <layer>` 之下的 `desiredPresentTime` → `presentIn X ms`。修正後為 +3–4 ms（Media3 為 +4.3 ms）；原樣 Bilibili 是 `presentIn -1042580352 ms`——時間戳是媒體 PTS（幾秒），等於「立刻顯示」。
+
+### 1.3 小米平板 6 Pro（HyperOS）
+
+- 裝置：小米平板 6 Pro（Snapdragon 8+ Gen 1，HyperOS／Android 15，面板 120.000 Hz），Bilibili 9.13.0 以 NPatch 1.0.9 管理器模式修補，離線 4K，Surface external。
+- 量測：非 root Perfetto（`adb shell perfetto`），指標同 1.2。**HyperOS 播放影片時會依解碼器回報的影片幀率鎖定合成刷新率**（SurfaceFlinger counter `VTFps`），所以每格的長度以當下的合成刷新率計算。
+- 面板正好 120 Hz，與 120 fps 內容沒有拍頻，物理下限為 0。
+
+| 影片 | 倍速 | 合成刷新率 | 每 30 秒多停格數 | 每秒呈現 | 結果 |
+|---|---|---|---|---|---|
+| 60 fps | 1x | 60 Hz | **2** | 59.9 | 正常 |
+| 60 fps | 0.5x | 60 Hz | **0** | 30.1 | 正常 |
+| 60 fps | 2x（實際 1.99） | 被系統鎖在 60 Hz | — | 56–64 | 系統限制 |
+| 120 fps | 1x | 120 Hz | **2** | 120.0 | 正常 |
+| 120 fps | 0.5x | 60 Hz | **2** | 60.0 | 正常 |
+| 120 fps | 2x（實際 1.99） | 120／60 Hz 切換 | — | 84.9 | 硬體限制 |
+
+- **60 fps × 2**：HyperOS 只看影片本身的幀率，不看倍速，所以 119.4 fps 的內容仍只合成到 60 Hz。不跳過同格幀、改用同一時間戳交給 SurfaceFlinger，或以 `MediaCodec.setParameters` 告訴解碼器 `frame-rate`／`operating-rate` = 幀率 × 倍速，都沒有讓它改變。
+- **120 fps × 2**：4K 在 2x 時每秒要解 238 幀，8+ Gen 1 的硬體解碼器只有約 186 幀。
 
 ## 2. 根因
 

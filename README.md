@@ -2,7 +2,7 @@
 
 # Bili Surface Bridge
 
-An LSPosed module for the official Bilibili Android app (`tv.danmaku.bili`). It fixes the micro-stutter of Bilibili's built-in IJK player during high-frame-rate on-demand playback (down to the physical floor on a Nubia NX809J), lets you pick the renderer of the normal video-detail player, shows the real video/audio format on screen, and can pick the best audio track automatically. Nothing in the official APK is modified; everything is hooked at runtime.
+An LSPosed module for the official Bilibili Android app (`tv.danmaku.bili`). It fixes the micro-stutter of Bilibili's built-in IJK player during high-frame-rate on-demand playback (down to the physical floor on a Nubia NX809J and a Xiaomi Pad 6 Pro), lets you pick the renderer of the normal video-detail player, shows the real video/audio format on screen, and can pick the best audio track automatically. Nothing in the official APK is modified; everything is hooked at runtime.
 
 The second half of this README is the full root-cause analysis and fix guide, written for Bilibili's player engineers (and the AI helping them): every conclusion comes from runtime experiments and Perfetto traces on Bilibili Android 9.13.0, and every fix maps one-to-one back to IJK and the player source.
 
@@ -24,11 +24,35 @@ Every change takes effect after Bilibili is fully closed and reopened.
 
 ## Install and verify
 
+The module APK is on [GitHub Releases](https://github.com/XPRAMT/BiliSurfaceExternal/releases). **Only Bilibili 9.13.0 is supported**: the native hooks are bound to that version's IJK library (they check its build-id and entry instructions first and do not hook on a mismatch); on other versions only some Java features work.
+
+### LSPosed (root)
+
 1. Install the module APK and enable it in LSPosed.
 2. Set its scope exclusively to Bilibili.
 3. Open the module, choose the renderer and switches you want.
 4. Force-stop and reopen Bilibili, then start a normal video.
 5. Search the LSPosed log for `BiliSurfaceBridge`. Successful attachment reports the selected video-detail renderer; with frame sync on, the IJK service logs `native release scheduling active` and `video-pictq-size default=min=12`.
+
+### NPatch (no root)
+
+[NPatch](https://github.com/7723mod/NPatch) packs the Xposed framework into Bilibili's APK. Use **manager mode** so the settings can be changed in the module app (in embedded mode the module only uses its defaults). Tested with NPatch 1.0.9:
+
+1. Get the Bilibili **9.13.0** APK.
+2. Patch it on a computer (Java 17 or later):
+   ```
+   java -jar jar-v1.0.9-833-release.jar bilibili-9.13.0.apk --manager -l 2 -o out
+   ```
+   `-l 2` is the signature-bypass level Bilibili needs to sign in and play normally.
+3. On the device install the NPatch manager (same version as the patcher), this module's APK and the patched Bilibili from `out/`. The patched app is signed differently from the official one, so the official app must be uninstalled first; its sign-in and offline cache are lost.
+4. In the NPatch manager's Manage page, tap Bilibili and enable **BiliSurfaceBridge**.
+5. Fully close and reopen Bilibili. Search `adb logcat` for `BiliSurfaceBridge`: `module preferences read from provider` means the settings were read, and playback logs `native release scheduling active`.
+
+Notes:
+
+- **On Xiaomi / HyperOS tablets, turn off parallel windows for Bilibili.** With it on, NPatch fails during startup and the module is not loaded.
+- Under NPatch the module reads its settings through a read-only ContentProvider in the module app; during the first second or two after Bilibili starts it cannot, and the defaults apply. Most settings take effect from the next video.
+- NPatch 1.0.9 hangs Bilibili at startup on a Sony G8142 (Android 9), with or without this module.
 
 The module writes only renderer class and non-sensitive display facts to the Xposed log. It never reads account data, cookies, media URLs, or playback authorization values.
 
@@ -84,6 +108,24 @@ To tell whether a stall is physical: its spacing should be `1 / (refresh rate �
 Other renderers (1x, offline 4K120, counted with the older metric "intervals longer than 1.5 slots", 30 s): stock Texture 376, stock direct Surface 143; Media3 1.8.1 reference 8 (60 fps 12). Direct Surface measured 6 (60 fps 2) after the fix, but has not been re-measured with the later fixes in section 3.
 
 Whether a timestamp takes effect is visible in the SurfaceFlinger trace: `latchBuffer <layer>` → `desiredPresentTime` → `presentIn X ms`. After the fix it reads +3–4 ms (Media3: +4.3 ms); stock Bilibili reads `presentIn -1042580352 ms` — the timestamp is the media PTS (seconds), which means "show now".
+
+### 1.3 Xiaomi Pad 6 Pro (HyperOS)
+
+- Device: Xiaomi Pad 6 Pro (Snapdragon 8+ Gen 1, HyperOS / Android 15, 120.000 Hz panel); Bilibili 9.13.0 patched with NPatch 1.0.9 in manager mode; offline 4K; Surface external.
+- Measurement: non-root Perfetto (`adb shell perfetto`), same metric as 1.2. **During video playback HyperOS locks the composition rate to the frame rate the decoder reports** (SurfaceFlinger counter `VTFps`), so a slot is measured at the composition rate in effect.
+- The panel is exactly 120 Hz: no beat against 120 fps content, so the physical floor is 0.
+
+| Video | Speed | Composition rate | Extra slots per 30 s | Shown per s | Result |
+|---|---|---|---|---|---|
+| 60 fps | 1x | 60 Hz | **2** | 59.9 | OK |
+| 60 fps | 0.5x | 60 Hz | **0** | 30.1 | OK |
+| 60 fps | 2x (actually 1.99) | locked at 60 Hz by the system | — | 56–64 | System limit |
+| 120 fps | 1x | 120 Hz | **2** | 120.0 | OK |
+| 120 fps | 0.5x | 60 Hz | **2** | 60.0 | OK |
+| 120 fps | 2x (actually 1.99) | switching 120 / 60 Hz | — | 84.9 | Hardware limit |
+
+- **60 fps × 2**: HyperOS looks only at the video's own frame rate, not at the speed, so 119.4 fps of content is still composed at 60 Hz. Neither releasing same-VSync frames with a shared timestamp instead of skipping them, nor telling the decoder `frame-rate` / `operating-rate` = fps × speed through `MediaCodec.setParameters`, changed it.
+- **120 fps × 2**: 4K at 2x needs 238 decoded frames per second; the 8+ Gen 1 hardware decoder delivers about 186.
 
 ## 2. Root causes
 
