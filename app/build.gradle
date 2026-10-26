@@ -25,15 +25,14 @@ android {
         }
     }
 
-    // Release signing comes from a properties file outside the repository
-    // (storeFile/storePassword/keyAlias/keyPassword); default
-    // ~/.android/bilisurfacebridge-release.properties, or -PreleaseSigningProperties=<path>.
-    // Without it the release APK is built unsigned.
-    def signingPropertiesFile = file(project.findProperty('releaseSigningProperties')
-            ?: "${System.getProperty('user.home')}/.android/bilisurfacebridge-release.properties")
+    // Release builds are signed with the debug key so they install over earlier builds.
+    // A dedicated key can be used with -PreleaseSigningProperties=<path> (a properties file
+    // with storeFile/storePassword/keyAlias/keyPassword, kept outside the repository).
+    def signingPropertiesPath = project.findProperty('releaseSigningProperties')
+    def signingPropertiesFile = signingPropertiesPath ? file(signingPropertiesPath) : null
     signingConfigs {
         release {
-            if (signingPropertiesFile.isFile()) {
+            if (signingPropertiesFile != null && signingPropertiesFile.isFile()) {
                 def signing = new Properties()
                 signingPropertiesFile.withInputStream { signing.load(it) }
                 storeFile file(signing['storeFile'])
@@ -47,9 +46,8 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            if (signingPropertiesFile.isFile()) {
-                signingConfig signingConfigs.release
-            }
+            signingConfig signingPropertiesFile != null && signingPropertiesFile.isFile()
+                    ? signingConfigs.release : signingConfigs.debug
         }
     }
 
