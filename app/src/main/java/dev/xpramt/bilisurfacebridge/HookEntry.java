@@ -43,7 +43,6 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static final String TAG = "BiliSurfaceBridge";
     private static final String TARGET_PACKAGE = "tv.danmaku.bili";
     private static final String IJK_SERVICE_PROCESS = "tv.danmaku.bili:ijkservice";
-    private static final String NX809J_MODEL = "NX809J";
     private static final String FACTORY =
             "tv.danmaku.biliplayerimpl.render.DefaultVideoRenderLayerFactory";
     private static final String FACTORY_913 = "Wr1.a";
@@ -167,11 +166,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
         }
     }
 
+    // Not limited to one device: the native hooks verify libijkplayer's build-id and entry
+    // instructions before patching anything.
     private void hookIjkService(ClassLoader classLoader) {
-        if (!NX809J_MODEL.equals(Build.MODEL)) {
-            log("IJK 4ms experiment skipped: device=" + Build.MODEL);
-            return;
-        }
         try {
             if (ModulePreferences.loadPlaybackDebugOverlayForHook()
                     && ModulePreferences.loadRenderCadenceProbeForHook()) {
@@ -196,7 +193,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             logOnce("mediacodec-frame-sync-hooks", Media3FrameSynchronizer.install());
             logOnce("media3-playback-clock-hooks",
                     Media3FrameSynchronizer.installPlaybackClockHooks(classLoader));
-            log("hooked IjkMediaPlayerService for NX809J experiments");
+            log("hooked IjkMediaPlayerService device=" + Build.MODEL);
         } catch (Throwable throwable) {
             log("IJK refresh-cap hook unavailable: " + throwable.getClass().getSimpleName());
         }
