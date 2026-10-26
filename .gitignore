@@ -1,0 +1,15 @@
+.gradle/
+build/
+app/build/
+app/.cxx/
+local.properties
+*.apk
+logs/
+hs_err_pid*.log
+artifacts/
+.codegraph/
+__pycache__/
+*.pyc
+.playwright-cli/
+sites/
+AGENTS.md

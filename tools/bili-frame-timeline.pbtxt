@@ -1,0 +1,69 @@
+buffers {
+  size_kb: 262144
+  fill_policy: RING_BUFFER
+}
+
+data_sources {
+  config {
+    name: "android.surfaceflinger.frame"
+  }
+}
+
+data_sources {
+  config {
+    name: "android.surfaceflinger.frametimeline"
+  }
+}
+
+data_sources {
+  config {
+    name: "android.surfaceflinger.layers"
+  }
+}
+
+# Per-transaction desired_present_time / vsync id, to check whether SurfaceFlinger honours
+# the MediaCodec render timestamps the module sets.
+data_sources {
+  config {
+    name: "android.surfaceflinger.transactions"
+    surfaceflinger_transactions_config {
+      mode: MODE_ACTIVE
+    }
+  }
+}
+
+data_sources {
+  config {
+    name: "linux.process_stats"
+    process_stats_config {
+      scan_all_processes_on_start: true
+    }
+  }
+}
+
+data_sources {
+  config {
+    name: "android.packages_list"
+  }
+}
+
+data_sources {
+  config {
+    name: "linux.ftrace"
+    ftrace_config {
+      atrace_categories: "gfx"
+      atrace_categories: "view"
+      atrace_categories: "sched"
+      atrace_categories: "video"
+      atrace_apps: "tv.danmaku.bili"
+      ftrace_events: "binder/binder_transaction"
+      ftrace_events: "binder/binder_transaction_received"
+      ftrace_events: "sched/sched_waking"
+    }
+  }
+}
+
+# Capture one second of headroom so the analyzer can close a deterministic
+# first-complete-present plus 30-second analysis window without truncating its
+# final boundary event.
+duration_ms: 31000
