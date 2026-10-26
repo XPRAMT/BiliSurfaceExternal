@@ -52,7 +52,6 @@
 
 - **小米／HyperOS 平板要關閉 Bilibili 的「平行視窗」**。開啟時 NPatch 會在啟動時出錯，模組不會載入。
 - NPatch 下模組透過模組 App 提供的唯讀 ContentProvider 讀設定；Bilibili 剛啟動的一兩秒讀不到，那段時間使用預設值。大多數設定在下一支影片就會生效。
-- 實測 NPatch 1.0.9 在 Sony G8142（Android 9）上會讓 Bilibili 啟動卡死，與本模組無關（不含模組也一樣）。
 
 模組只會寫入 renderer 類別與非敏感的螢幕資訊到 Xposed log，不讀取帳號資料、Cookie、影片網址或播放授權值。
 

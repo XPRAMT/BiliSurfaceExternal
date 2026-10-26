@@ -52,7 +52,6 @@ Notes:
 
 - **On Xiaomi / HyperOS tablets, turn off parallel windows for Bilibili.** With it on, NPatch fails during startup and the module is not loaded.
 - Under NPatch the module reads its settings through a read-only ContentProvider in the module app; during the first second or two after Bilibili starts it cannot, and the defaults apply. Most settings take effect from the next video.
-- NPatch 1.0.9 hangs Bilibili at startup on a Sony G8142 (Android 9), with or without this module.
 
 The module writes only renderer class and non-sensitive display facts to the Xposed log. It never reads account data, cookies, media URLs, or playback authorization values.
 
