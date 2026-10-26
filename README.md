@@ -39,7 +39,11 @@ The module APK is on [GitHub Releases](https://github.com/XPRAMT/BiliSurfaceExte
 [NPatch](https://github.com/7723mod/NPatch) packs the Xposed framework into Bilibili's APK. Use **manager mode** so the settings can be changed in the module app (in embedded mode the module only uses its defaults). Tested with NPatch 1.0.9:
 
 1. Get the Bilibili **9.13.0** APK.
-2. Patch it on a computer (Java 17 or later): `java -jar jar-v1.0.9-833-release.jar bilibili-9.13.0.apk --manager -l 2 -o out`. `-l 2` is the signature-bypass level Bilibili needs to sign in and play normally.
+2. Patch it on a computer (Java 17 or later):
+   ```
+   java -jar jar-v1.0.9-833-release.jar bilibili-9.13.0.apk --manager -l 2 -o out
+   ```
+   `-l 2` is the signature-bypass level Bilibili needs to sign in and play normally.
 3. On the device install the NPatch manager (same version as the patcher), this module's APK and the patched Bilibili from `out/`. The patched app is signed differently from the official one, so the official app must be uninstalled first; its sign-in and offline cache are lost.
 4. In the NPatch manager's Manage page, tap Bilibili and enable **BiliSurfaceBridge**.
 5. Fully close and reopen Bilibili. Search `adb logcat` for `BiliSurfaceBridge`: `module preferences read from provider` means the settings were read, and playback logs `native release scheduling active`.
