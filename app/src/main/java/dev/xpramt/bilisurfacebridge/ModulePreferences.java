@@ -139,7 +139,7 @@ final class ModulePreferences {
 
     static RendererMode loadVideoDetailRendererModeForHook() {
         try {
-            XSharedPreferences preferences = hookPreferences();
+            SharedPreferences preferences = hookPreferences();
             return rendererMode(preferences);
         } catch (Throwable ignored) {
             return RendererMode.SURFACE_EXTERNAL;
@@ -148,7 +148,7 @@ final class ModulePreferences {
 
     static boolean loadPlaybackDebugOverlayForHook() {
         try {
-            XSharedPreferences preferences = hookPreferences();
+            SharedPreferences preferences = hookPreferences();
             return preferences.getBoolean(
                     KEY_PLAYBACK_DEBUG_OVERLAY, DEFAULT_PLAYBACK_DEBUG_OVERLAY);
         } catch (Throwable ignored) {
@@ -158,7 +158,7 @@ final class ModulePreferences {
 
     static boolean loadPlaybackStreamOverlayForHook() {
         try {
-            XSharedPreferences preferences = hookPreferences();
+            SharedPreferences preferences = hookPreferences();
             return preferences.getBoolean(
                     KEY_PLAYBACK_STREAM_OVERLAY, DEFAULT_PLAYBACK_STREAM_OVERLAY);
         } catch (Throwable ignored) {
@@ -168,7 +168,7 @@ final class ModulePreferences {
 
     static boolean loadAutoSelectBestAudioForHook() {
         try {
-            XSharedPreferences preferences = hookPreferences();
+            SharedPreferences preferences = hookPreferences();
             return preferences.getBoolean(
                     KEY_AUTO_SELECT_BEST_AUDIO, DEFAULT_AUTO_SELECT_BEST_AUDIO);
         } catch (Throwable ignored) {
@@ -178,7 +178,7 @@ final class ModulePreferences {
 
     static boolean loadRenderCadenceProbeForHook() {
         try {
-            XSharedPreferences preferences = hookPreferences();
+            SharedPreferences preferences = hookPreferences();
             return preferences.getBoolean(KEY_RENDER_CADENCE_PROBE,
                     DEFAULT_RENDER_CADENCE_PROBE);
         } catch (Throwable ignored) {
@@ -188,7 +188,7 @@ final class ModulePreferences {
 
     static boolean loadMedia3FrameSyncForHook() {
         try {
-            XSharedPreferences preferences = hookPreferences();
+            SharedPreferences preferences = hookPreferences();
             return preferences.getBoolean(KEY_MEDIA3_FRAME_SYNC, DEFAULT_MEDIA3_FRAME_SYNC);
         } catch (Throwable ignored) {
             return false;
@@ -197,17 +197,22 @@ final class ModulePreferences {
 
     static boolean loadMinimalMedia3PlayerForHook() {
         try {
-            XSharedPreferences preferences = hookPreferences();
+            SharedPreferences preferences = hookPreferences();
             boolean enabled = preferences.getBoolean(
                     KEY_MINIMAL_MEDIA3_PLAYER, DEFAULT_MINIMAL_MEDIA3_PLAYER);
-            File preferenceFile = preferences.getFile();
+            String source;
+            if (preferences instanceof XSharedPreferences) {
+                File preferenceFile = ((XSharedPreferences) preferences).getFile();
+                source = " file=" + preferenceFile.getAbsolutePath()
+                        + " readable=" + preferenceFile.canRead()
+                        + " length=" + preferenceFile.length()
+                        + " modified=" + preferenceFile.lastModified();
+            } else {
+                source = " source=provider";
+            }
             Log.i(TAG, "[DEBUG-PREF-01] minimal_media3_player=" + enabled
                     + " contains=" + preferences.contains(KEY_MINIMAL_MEDIA3_PLAYER)
-                    + " keys=" + preferences.getAll().keySet()
-                    + " file=" + preferenceFile.getAbsolutePath()
-                    + " readable=" + preferenceFile.canRead()
-                    + " length=" + preferenceFile.length()
-                    + " modified=" + preferenceFile.lastModified());
+                    + " keys=" + preferences.getAll().keySet() + source);
             return enabled;
         } catch (Throwable ignored) {
             Log.e(TAG, "[DEBUG-PREF-01] minimal_media3_player read failed"
@@ -235,7 +240,7 @@ final class ModulePreferences {
 
     static boolean loadBlockIjkFrameDropForHook() {
         try {
-            XSharedPreferences preferences = hookPreferences();
+            SharedPreferences preferences = hookPreferences();
             return preferences.getBoolean(
                     KEY_BLOCK_IJK_FRAME_DROP, DEFAULT_BLOCK_IJK_FRAME_DROP);
         } catch (Throwable ignored) {
@@ -245,7 +250,7 @@ final class ModulePreferences {
 
     static boolean loadComputeTargetDelayBlockedForHook() {
         try {
-            XSharedPreferences preferences = hookPreferences();
+            SharedPreferences preferences = hookPreferences();
             return preferences.getBoolean(KEY_BLOCK_COMPUTE_TARGET_DELAY,
                     DEFAULT_BLOCK_COMPUTE_TARGET_DELAY);
         } catch (Throwable ignored) {
@@ -255,7 +260,7 @@ final class ModulePreferences {
 
     static boolean loadFrameQueueWaitRoundUpForHook() {
         try {
-            XSharedPreferences preferences = hookPreferences();
+            SharedPreferences preferences = hookPreferences();
             return preferences.getBoolean(KEY_FRAME_QUEUE_WAIT_ROUND_UP,
                     DEFAULT_FRAME_QUEUE_WAIT_ROUND_UP);
         } catch (Throwable ignored) {
@@ -337,18 +342,87 @@ final class ModulePreferences {
     private static final long HOOK_PREFERENCES_TTL_NS = 2_000_000_000L;
     private static XSharedPreferences cachedHookPreferences;
     private static long cachedHookPreferencesNs;
+    // NPatch manager mode points XSharedPreferences at this app's private directory, which
+    // Bilibili cannot read; the module app then serves a snapshot via ModulePreferencesProvider.
+    private static volatile SharedPreferences providerSnapshot;
+    private static volatile boolean providerRefreshRunning;
 
-    private static synchronized XSharedPreferences hookPreferences() {
+    private static synchronized SharedPreferences hookPreferences() {
         long now = System.nanoTime();
-        if (cachedHookPreferences == null
-                || now - cachedHookPreferencesNs > HOOK_PREFERENCES_TTL_NS) {
+        boolean stale = cachedHookPreferences == null
+                || now - cachedHookPreferencesNs > HOOK_PREFERENCES_TTL_NS;
+        if (stale) {
             if (cachedHookPreferences == null) {
                 cachedHookPreferences = new XSharedPreferences(PACKAGE_NAME, PREFS_NAME);
             }
             cachedHookPreferences.reload();
             cachedHookPreferencesNs = now;
         }
-        return cachedHookPreferences;
+        if (cachedHookPreferences.getFile().canRead()) {
+            return cachedHookPreferences;
+        }
+        SharedPreferences snapshot = providerSnapshot;
+        if (snapshot == null) {
+            // First read: synchronous, so startup hooks see the user's settings.
+            snapshot = readProviderSnapshot();
+            if (snapshot != null) {
+                providerSnapshot = snapshot;
+            }
+        } else if (stale && !providerRefreshRunning) {
+            // Later refreshes stay off the hot path: the provider call may start the module
+            // app's process.
+            providerRefreshRunning = true;
+            Thread refresh = new Thread(() -> {
+                try {
+                    SharedPreferences fresh = readProviderSnapshot();
+                    if (fresh != null) {
+                        providerSnapshot = fresh;
+                    }
+                } finally {
+                    providerRefreshRunning = false;
+                }
+            }, "BiliSurfaceBridge-prefs");
+            refresh.setDaemon(true);
+            refresh.start();
+        }
+        return snapshot != null ? snapshot : cachedHookPreferences;
+    }
+
+    private static SharedPreferences readProviderSnapshot() {
+        try {
+            Object application = Class.forName("android.app.ActivityThread")
+                    .getMethod("currentApplication").invoke(null);
+            if (!(application instanceof Context)) {
+                return null;
+            }
+            android.os.Bundle bundle = ((Context) application).getContentResolver().call(
+                    ModulePreferencesProvider.URI, ModulePreferencesProvider.METHOD_SNAPSHOT,
+                    null, null);
+            if (bundle == null) {
+                logProviderOnce("module preferences provider returned nothing");
+                return null;
+            }
+            if (!providerLogged) {
+                providerLogged = true;
+                Log.i(TAG, "module preferences read from provider keys="
+                        + new java.util.TreeSet<>(bundle.keySet()));
+            }
+            return new SnapshotPreferences(bundle);
+        } catch (Throwable throwable) {
+            logProviderOnce("module preferences provider unavailable="
+                    + throwable.getClass().getSimpleName());
+            return null;
+        }
+    }
+
+    private static volatile boolean providerLogged;
+    private static volatile boolean providerFailureLogged;
+
+    private static void logProviderOnce(String message) {
+        if (!providerFailureLogged) {
+            providerFailureLogged = true;
+            Log.w(TAG, message);
+        }
     }
 
     private static SharedPreferences preferences(Context context) {

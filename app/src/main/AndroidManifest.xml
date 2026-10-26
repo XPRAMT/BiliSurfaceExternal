@@ -12,6 +12,11 @@
         <meta-data android:name="xposedminversion" android:value="93" />
         <meta-data android:name="xposedsharedprefs" android:value="true" />
 
+        <provider
+            android:name=".ModulePreferencesProvider"
+            android:authorities="dev.xpramt.bilisurfacebridge.prefs"
+            android:exported="true" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true">
