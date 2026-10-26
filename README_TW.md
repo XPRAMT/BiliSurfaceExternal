@@ -39,11 +39,7 @@
 [NPatch](https://github.com/7723mod/NPatch) 把 Xposed 框架打包進 Bilibili 的 APK。請用**管理器模式**，模組設定才能在模組 App 裡調整（嵌入模式下模組只能用預設值）。以下以 NPatch 1.0.9 實測：
 
 1. 取得 Bilibili **9.13.0** 的 APK。
-2. 在電腦上修補（需要 Java 17 以上）：
-   ```
-   java -jar jar-v1.0.9-833-release.jar bilibili-9.13.0.apk --manager -l 2 -o out
-   ```
-   `-l 2` 是簽名繞過等級，Bilibili 需要它才能正常登入與播放。
+2. 在電腦上修補（需要 Java 17 以上）：`java -jar jar-v1.0.9-833-release.jar bilibili-9.13.0.apk --manager -l 2 -o out`。`-l 2` 是簽名繞過等級，Bilibili 需要它才能正常登入與播放。
 3. 在裝置上安裝 NPatch 管理器（與修補用的版本相同）、本模組 APK，以及 `out/` 裡修補後的 Bilibili。修補版的簽名與官方版不同，必須先解除安裝官方版，登入狀態與離線快取會被清除。
 4. 在 NPatch 管理器的「管理」頁點 Bilibili，勾選 **BiliSurfaceBridge**。
 5. 完整關閉再開啟 Bilibili。在 `adb logcat` 搜尋 `BiliSurfaceBridge`：看到 `module preferences read from provider` 表示設定已讀到，播放時會出現 `native release scheduling active`。
