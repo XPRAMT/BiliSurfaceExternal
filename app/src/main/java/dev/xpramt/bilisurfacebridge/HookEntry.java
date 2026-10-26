@@ -103,8 +103,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 logOnce("external-render-timestamps", ExternalRenderTimestamps.install());
             }
         }
-        if (TARGET_PACKAGE.equals(loadPackageParam.processName)
-                && ModulePreferences.loadReplaceStoryVideoForHook()) {
+        // Installed regardless of the setting, which the hooks read when they fire: under NPatch
+        // manager mode the module preferences are unreadable until Bilibili's Application
+        // exists, so a load-time check would always see the default.
+        if (TARGET_PACKAGE.equals(loadPackageParam.processName)) {
             logOnce("replace-story-video", StoryRouteHook.install(loadPackageParam.classLoader));
         }
         hookIjkDisplayFrameCounter(loadPackageParam.classLoader);
@@ -114,9 +116,6 @@ public final class HookEntry implements IXposedHookLoadPackage {
     }
 
     private void hookIjkDisplayFrameCounter(ClassLoader classLoader) {
-        if (!ModulePreferences.loadPlaybackDebugOverlayForHook()) {
-            return;
-        }
         try {
             Class<?> ijkPlayerClass = XposedHelpers.findClass(IJK_PLAYER, classLoader);
             Class<?> callbackClass = XposedHelpers.findClass(IJK_VIDEO_DISPLAY_CALLBACK, classLoader);
@@ -124,6 +123,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
+                            if (!ModulePreferences.loadPlaybackDebugOverlayForHook()) {
+                                return;
+                            }
                             Object delegate = param.args[0];
                             if (delegate != null && Proxy.isProxyClass(delegate.getClass())
                                     && Proxy.getInvocationHandler(delegate)
@@ -137,6 +139,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
             XposedHelpers.findAndHookMethod(ijkPlayerClass, "start", new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
+                    if (!ModulePreferences.loadPlaybackDebugOverlayForHook()) {
+                        return;
+                    }
                     try {
                         PlaybackDebugOverlay.resetFrameTiming();
                         Object existingCallback = XposedHelpers.getObjectField(

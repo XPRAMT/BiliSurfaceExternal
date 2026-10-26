@@ -72,7 +72,7 @@ final class StoryRouteHook {
             }
             String raw = original.toString();
             String rewritten = StoryRouteRewriter.rewrite(raw);
-            if (!raw.equals(rewritten)) {
+            if (!raw.equals(rewritten) && ModulePreferences.loadReplaceStoryVideoForHook()) {
                 param.args[0] = Uri.parse(rewritten);
                 param.setObjectExtra(REWRITTEN_STORY_REQUEST, Boolean.TRUE);
             }
@@ -89,7 +89,8 @@ final class StoryRouteHook {
         protected void beforeHookedMethod(MethodHookParam param) {
             String raw = (String) param.args[0];
             String rewritten = StoryRouteRewriter.rewrite(raw);
-            if (raw != null && !raw.equals(rewritten)) {
+            if (raw != null && !raw.equals(rewritten)
+                    && ModulePreferences.loadReplaceStoryVideoForHook()) {
                 param.args[0] = rewritten;
                 param.setObjectExtra(REWRITTEN_STORY_REQUEST, Boolean.TRUE);
             }
@@ -116,7 +117,7 @@ final class StoryRouteHook {
             }
             String raw = original.toString();
             String rewritten = StoryRouteRewriter.rewrite(raw);
-            if (!raw.equals(rewritten)) {
+            if (!raw.equals(rewritten) && ModulePreferences.loadReplaceStoryVideoForHook()) {
                 param.args[0] = XposedHelpers.callMethod(companion, "parse", rewritten);
                 param.setObjectExtra(REWRITTEN_STORY_REQUEST, Boolean.TRUE);
             }
